@@ -2,5 +2,28 @@ import torch.nn as nn
 import timm
 
 class HierarchicalCNN(nn.Module):
-    # ... (기존 HierarchicalCNN 클래스 코드)
-    pass 
+    def __init__(self, primary_to_secondary_map, num_primary_classes):
+        super().__init__()
+        # ecaresnet50d Backbone
+        self.backbone = timm.create_model(
+            "ecaresnet50d",
+            pretrained=True,
+            num_classes=0,        # fc 제거
+            global_pool="avg"
+        )
+        in_features = self.backbone.num_features
+
+        # Primary Head
+        self.primary_head = nn.Linear(in_features, num_primary_classes)
+
+        # Secondary Heads: 각 primary_id별 별도 Linear
+        self.secondary_heads = nn.ModuleDict()
+        for pid, sub_list in primary_to_secondary_map.items():
+            out_dim = len(sub_list)
+            self.secondary_heads[str(pid)] = nn.Linear(in_features, out_dim)
+
+    def forward(self, x):
+        feat = self.backbone(x)  # shape: (B, in_features)
+        primary_logits = self.primary_head(feat)
+        # secondary는 각 샘플별로 pid가 다를 수 있어 한 번에 못 뽑음 -> 학습루프에서 처리
+        return primary_logits, feat

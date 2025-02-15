@@ -11,7 +11,7 @@ PRIMARY_TO_SECONDARY = {
 }
 
 TRAIN_CONFIG = {
-    'batch_size': 64,
+    'batch_size': 128,
     'num_workers': 2,
     'initial_lr': 1e-3,
     'fine_tune_lr': 1e-4,
