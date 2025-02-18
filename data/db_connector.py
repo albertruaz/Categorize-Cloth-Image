@@ -29,6 +29,7 @@ PRIMARY_TO_SECONDARY = {
     9: [33]                        # 신발
 }
 
+
 class ProductImageDataset(Dataset):
     def __init__(self, data_rows: List[Dict], transform: Optional[transforms.Compose] = None):
         """
@@ -76,22 +77,15 @@ class ProductImageDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, int, int]:
-        """
-        데이터셋에서 하나의 아이템을 가져옴
-        
-        Returns:
-            (이미지 텐서, primary 레이블 인덱스, primary ID, secondary 레이블 로컬 인덱스)
-        """
         row = self.data[idx]
         image_url = row['image_url']
 
-        # 이미지 다운로드 및 변환
+        # 이미지 다운로드
         try:
             response = requests.get(image_url)
             img = Image.open(BytesIO(response.content)).convert("RGB")
         except Exception as e:
             print(f"Error loading image from {image_url}: {e}")
-            # 에러 발생 시 검은색 더미 이미지 반환
             img = Image.new('RGB', (224, 224), 'black')
 
         # 이미지 변환 적용
@@ -100,7 +94,7 @@ class ProductImageDataset(Dataset):
         else:
             img = transforms.ToTensor()(img)
 
-        # 레이블 준비
+        # 레이블 생성
         pid = row['primary_category_id']
         sid = row['secondary_category_id']
 
@@ -109,30 +103,6 @@ class ProductImageDataset(Dataset):
         secondary_label_local = sub_info['subcat_to_idx'][sid]
 
         return img, primary_label, pid, secondary_label_local
-
-    @staticmethod
-    def get_train_val_transforms() -> Tuple[transforms.Compose, transforms.Compose]:
-        """
-        학습 및 검증용 이미지 변환 파이프라인 반환
-        """
-        train_transform = transforms.Compose([
-            transforms.RandomResizedCrop(224),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
-
-        val_transform = transforms.Compose([
-            transforms.Resize(256),
-            transforms.CenterCrop(224),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                               std=[0.229, 0.224, 0.225])
-        ])
-
-        return train_transform, val_transform 
-    
 
 
 class SingletonMeta(type):

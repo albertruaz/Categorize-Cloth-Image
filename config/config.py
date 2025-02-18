@@ -10,18 +10,18 @@ PRIMARY_TO_SECONDARY = {
     9: [33]                        # 신발
 }
 
-TRAIN_CONFIG = {
-    'batch_size': 128,
-    'num_workers': 2,
-    'initial_lr': 1e-3,
-    'fine_tune_lr': 1e-4,
-    'fine_tune_epoch': 2,
-    'total_epochs': 5
-}
+# TRAIN_CONFIG = {
+#     'batch_size': 256,
+#     'num_workers': 2,
+#     'initial_lr': 1e-3,
+#     'fine_tune_lr': 1e-4,
+#     'fine_tune_epoch': 2,
+#     'total_epochs': 5
+# }
 
-DATA_CONFIG = {
-    'train_limit': 6000,
-    'train_offset': 0,
-    'val_limit': 1500,
-    'val_offset': 6000
-} 
+# DATA_CONFIG = {
+#     'train_limit': 6000,
+#     'train_offset': 0,
+#     'val_limit': 1500,
+#     'val_offset': 6000
+# } 
