@@ -8,6 +8,7 @@ __pycache__/
 *.txt
 *.log
 *.pth
+*.out
 
 .env
 

@@ -8,21 +8,29 @@ from torchvision import transforms
 
 from data.db_connector import ProductImageDataset, DBConnector
 from utils.trainer import train_one_epoch, evaluate
-from models.hierarchical_cnn import HierarchicalCNN, SingleStageCNN
-from config.config import PRIMARY_TO_SECONDARY
+from models.hierarchical_cnn import HierarchicalCNN, SingleStageCNN, ClothingClassifierCNN
+# from config.config import PRIMARY_TO_SECONDARY
 
+import json
 
+def load_config(config_path="config/config.json"):
+    with open(config_path, "r") as file:
+        config = json.load(file)
 
+    # PRIMARY_TO_SECONDARY의 key를 int로 변환
+    config["PRIMARY_TO_SECONDARY"] = {int(k): v for k, v in config["PRIMARY_TO_SECONDARY"].items()}
+    return config
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
+    config = load_config()
 
     db = DBConnector()
-    # train_rows = db.get_product_data(where_condition="1=1", limit=60000, offset=0)
-    # val_rows   = db.get_product_data(where_condition="1=1", limit=15000, offset=60000)
-    train_rows = db.get_product_data(where_condition="1=1", limit=6000, offset=0)
-    val_rows   = db.get_product_data(where_condition="1=1", limit=1500, offset=6000)
+    # train_rows = db.get_product_data(where_condition="1=1", limit=6000, offset=0)
+    # val_rows   = db.get_product_data(where_condition="1=1", limit=1500, offset=6000)
+    train_rows = db.get_product_data(where_condition="1=1", limit=config["train_num"], offset=0)
+    val_rows   = db.get_product_data(where_condition="1=1", limit=config["val_num"], offset=config["train_num"])
 
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -52,42 +60,40 @@ def main():
     val_dataset   = ProductImageDataset(val_rows,   transform=val_transform)
 
     # DataLoader
-    batch_size = 128
+    batch_size = config["batch_size"]
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True)
     val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=6, pin_memory=True)
 
     # 모델 생성
     # model = HierarchicalCNN(PRIMARY_TO_SECONDARY, len(PRIMARY_TO_SECONDARY)).to(device)
     secondary_all = []
-    for sub_list in PRIMARY_TO_SECONDARY.values():
+    for sub_list in config["PRIMARY_TO_SECONDARY"].values():
         secondary_all.extend(sub_list)
     secondary_all = sorted(set(secondary_all))
     num_secondary_classes = len(secondary_all)
 
-    model = SingleStageCNN(num_secondary_classes).to(device)
+    model = ClothingClassifierCNN(num_secondary_classes).to(device)
 
     # 처음에는 backbone 파라미터 동결
     for param in model.backbone.parameters():
         param.requires_grad = False
 
-    # Optimizer 및 스케줄러 설정
-    # 처음에는 primary/secondary Head만 학습이므로 LR=1e-3
-    # optimizer = optim.Adam(params_to_update, lr=1e-3)
+
     optimizer = optim.AdamW(
         model.classifier.parameters(), 
-        lr=1e-3,
-        weight_decay=1e-4
+        lr=config["lr"],
+        weight_decay=config["weight_decay"]
     )
     
     scheduler = optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[10, 15],  # 10epoch, 15epoch 지점에서 LR 감소
-        gamma=0.1
+        milestones=config["milestones"],  # 10epoch, 15epoch 지점에서 LR 감소
+        gamma=config["gamma"]
     )
 
 
     # 학습 설정
-    epochs = 20
+    epochs = config["epochs"]
     best_val_loss = float('inf')
 
     for epoch in range(epochs):
@@ -126,15 +132,15 @@ def main():
     # idx_to_primary = {v: k for k, v in train_dataset.primary_to_idx.items()}
 
     for i in range(test_samples):
-        img, primary_label, pid, secondary_label_local = val_dataset[i]
+        # val_dataset에서 product_id도 함께 반환하도록 수정된 상태
+        img, product_id, secondary_label_local = val_dataset[i]
         with torch.no_grad():
-            # SingleStageCNN은 logits만 반환
             logits = model(img.unsqueeze(0).to(device))
             pred_s_idx = torch.argmax(logits, dim=1).item()
 
         print(f"[Sample {i}]")
-        # 필요하면 GT primary, PID를 찍어볼 수 있으나 2차 분류는 pred_s_idx가 전부.
-        print(f"   GT primary={pid}, GT secondary(local)={secondary_label_local}")
+        print(f"   Product ID: {product_id}")  # product_id 출력 추가
+        print(f"   secondary(local)={secondary_label_local}")
         print(f"   Pred secondary(local)={pred_s_idx}")
 
 if __name__ == '__main__':

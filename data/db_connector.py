@@ -19,17 +19,17 @@ import time
 load_dotenv("info/.env")
 
 # 카테고리 매핑 정의
-PRIMARY_TO_SECONDARY = {
-    1: [1, 2, 3, 4, 5, 24],        # 아우터
-    2: [6, 7, 8, 9, 25, 26],       # 상의
-    3: [10, 11, 12, 13, 14, 27],   # 바지
-    4: [15, 28, 29],               # 원피스
-    5: [17, 18, 19],               # 패션소품
-    6: [20, 21, 22, 23],           # 가방
-    7: [30, 16, 31],               # 스커트
-    8: [32],                       # 셋업
-    9: [33]                        # 신발
-}
+# PRIMARY_TO_SECONDARY = {
+#     1: [1, 2, 3, 4, 5, 24],        # 아우터
+#     2: [6, 7, 8, 9, 25, 26],       # 상의
+#     3: [10, 11, 12, 13, 14, 27],   # 바지
+#     4: [15, 28, 29],               # 원피스
+#     5: [17, 18, 19],               # 패션소품
+#     6: [20, 21, 22, 23],           # 가방
+#     7: [30, 16, 31],               # 스커트
+#     8: [32],                       # 셋업
+#     9: [33]                        # 신발
+# }
 
 def load_image(image_url, max_retries=3, timeout=10):
     """이미지를 로드하고 PIL Image 객체로 반환한다. 실패 시 지정된 횟수만큼 재시도한다."""
@@ -73,30 +73,30 @@ class ProductImageDataset(Dataset):
             pid = row.get('primary_category_id')
             sid = row.get('secondary_category_id')
             img_url = row.get('image_url')
-            
+
             # null check 및 유효한 카테고리 조합 확인
-            if (pid is None or sid is None or img_url is None or
-                pid not in PRIMARY_TO_SECONDARY or
-                sid not in PRIMARY_TO_SECONDARY[pid]):
-                continue
+            # if (pid is None or sid is None or img_url is None or
+            #     pid not in PRIMARY_TO_SECONDARY or
+            #     sid not in PRIMARY_TO_SECONDARY[pid]):
+            #     continue
                 
             valid_rows.append(row)
 
         self.data = valid_rows
 
         # Primary 카테고리 ID를 0~N-1로 매핑
-        primary_ids = sorted(list(set(d['primary_category_id'] for d in self.data)))
-        self.primary_to_idx = {pid: i for i, pid in enumerate(primary_ids)}
-        self.num_primary_classes = len(primary_ids)
+        # primary_ids = sorted(list(set(d['primary_category_id'] for d in self.data)))
+        # self.primary_to_idx = {pid: i for i, pid in enumerate(primary_ids)}
+        # self.num_primary_classes = len(primary_ids)
 
         # Secondary 카테고리 매핑 생성
-        self.secondary_mapping = {}
-        for pid in primary_ids:
-            valid_subcats = PRIMARY_TO_SECONDARY[pid]
-            self.secondary_mapping[pid] = {
-                'subcats': valid_subcats,
-                'subcat_to_idx': {sc: idx for idx, sc in enumerate(valid_subcats)}
-            }
+        # self.secondary_mapping = {}
+        # for pid in primary_ids:
+        #     valid_subcats = PRIMARY_TO_SECONDARY[pid]
+        #     self.secondary_mapping[pid] = {
+        #         'subcats': valid_subcats,
+        #         'subcat_to_idx': {sc: idx for idx, sc in enumerate(valid_subcats)}
+        #     }
 
     def __len__(self) -> int:
         return len(self.data)
@@ -104,14 +104,8 @@ class ProductImageDataset(Dataset):
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, int, int]:
         row = self.data[idx]
         image_url = row['image_url']
-
-        # 이미지 다운로드
-        # try:
-        #     response = requests.get(image_url)
-        #     img = Image.open(BytesIO(response.content)).convert("RGB")
-        # except Exception as e:
-        #     print(f"Error loading image from {image_url}: {e}")
-        #     img = Image.new('RGB', (224, 224), 'black')
+        product_id = row['id']
+        
         img = load_image(image_url)
 
         # 이미지 변환 적용
@@ -124,11 +118,12 @@ class ProductImageDataset(Dataset):
         pid = row['primary_category_id']
         sid = row['secondary_category_id']
 
-        primary_label = self.primary_to_idx[pid]
-        sub_info = self.secondary_mapping[pid]
-        secondary_label_local = sub_info['subcat_to_idx'][sid]
-
-        return img, primary_label, pid, secondary_label_local
+        # primary_label = self.primary_to_idx[pid]
+        # sub_info = self.secondary_mapping[pid]
+        # secondary_label_local = sub_info['subcat_to_idx'][sid]
+        
+        return img, product_id, sid
+        # return img, primary_label, pid, secondary_label_local, product_id
 
 class SingletonMeta(type):
     _instance = None
