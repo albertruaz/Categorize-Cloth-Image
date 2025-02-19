@@ -13,6 +13,8 @@ from typing import List, Dict
 import os
 import json
 from dotenv import load_dotenv
+import time
+
 
 load_dotenv("info/.env")
 
@@ -29,6 +31,29 @@ PRIMARY_TO_SECONDARY = {
     9: [33]                        # 신발
 }
 
+def load_image(image_url, max_retries=3, timeout=10):
+    """이미지를 로드하고 PIL Image 객체로 반환한다. 실패 시 지정된 횟수만큼 재시도한다."""
+    for attempt in range(1, max_retries + 1):
+        try:
+            # 타임아웃 설정 (초 단위)
+            response = requests.get(image_url, timeout=timeout)
+
+            # HTTP 에러가 발생했을 경우 예외 발생
+            response.raise_for_status()
+
+            # 이미지를 메모리에 로드
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            return img
+
+        except Exception as e:
+            print(f"[{attempt}/{max_retries}] Error loading image from {image_url}: {e}")
+            
+            # 재시도 횟수를 모두 소진했다면, 빈(검정) 이미지로 대체
+            if attempt == max_retries:
+                return Image.new('RGB', (224, 224), 'black')
+            
+            # 잠시 대기 후 재시도
+            time.sleep(1)
 
 class ProductImageDataset(Dataset):
     def __init__(self, data_rows: List[Dict], transform: Optional[transforms.Compose] = None):
@@ -81,12 +106,13 @@ class ProductImageDataset(Dataset):
         image_url = row['image_url']
 
         # 이미지 다운로드
-        try:
-            response = requests.get(image_url)
-            img = Image.open(BytesIO(response.content)).convert("RGB")
-        except Exception as e:
-            print(f"Error loading image from {image_url}: {e}")
-            img = Image.new('RGB', (224, 224), 'black')
+        # try:
+        #     response = requests.get(image_url)
+        #     img = Image.open(BytesIO(response.content)).convert("RGB")
+        # except Exception as e:
+        #     print(f"Error loading image from {image_url}: {e}")
+        #     img = Image.new('RGB', (224, 224), 'black')
+        img = load_image(image_url)
 
         # 이미지 변환 적용
         if self.transform:
@@ -103,7 +129,6 @@ class ProductImageDataset(Dataset):
         secondary_label_local = sub_info['subcat_to_idx'][sid]
 
         return img, primary_label, pid, secondary_label_local
-
 
 class SingletonMeta(type):
     _instance = None

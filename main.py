@@ -21,8 +21,8 @@ def main():
     db = DBConnector()
     # train_rows = db.get_product_data(where_condition="1=1", limit=60000, offset=0)
     # val_rows   = db.get_product_data(where_condition="1=1", limit=15000, offset=60000)
-    train_rows = db.get_product_data(where_condition="1=1", limit=600, offset=0)
-    val_rows   = db.get_product_data(where_condition="1=1", limit=150, offset=600)
+    train_rows = db.get_product_data(where_condition="1=1", limit=6000, offset=0)
+    val_rows   = db.get_product_data(where_condition="1=1", limit=1500, offset=6000)
 
     train_transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -52,9 +52,9 @@ def main():
     val_dataset   = ProductImageDataset(val_rows,   transform=val_transform)
 
     # DataLoader
-    batch_size = 256
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
-    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=12, pin_memory=True)
+    batch_size = 128
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=6, pin_memory=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=6, pin_memory=True)
 
     # 모델 생성
     # model = HierarchicalCNN(PRIMARY_TO_SECONDARY, len(PRIMARY_TO_SECONDARY)).to(device)
@@ -92,12 +92,12 @@ def main():
 
     for epoch in range(epochs):
         # epoch==5에서 backbone 언프리징 + LR 감소
-        if epoch == 5:
-            print("==> Unfreezing the backbone and lowering LR to 1e-4")
-            for param in model.backbone.parameters():
-                param.requires_grad = True
-            optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
-            # 필요하다면 scheduler도 새로 지정 또는 유지
+        # if epoch == 5:
+        #     print("==> Unfreezing the backbone and lowering LR to 1e-4")
+        #     for param in model.backbone.parameters():
+        #         param.requires_grad = True
+        #     optimizer = optim.AdamW(model.parameters(), lr=1e-4, weight_decay=1e-4)
+        #     # 필요하다면 scheduler도 새로 지정 또는 유지
 
         train_loss, train_s_acc = train_one_epoch(model, train_loader, optimizer, device, epoch_idx=epoch)
         val_loss, val_s_acc = evaluate(model, val_loader, device, epoch_idx=epoch)
