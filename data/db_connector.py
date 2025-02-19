@@ -68,21 +68,21 @@ class ProductImageDataset(Dataset):
         self.transform = transform
 
         # 유효한 데이터만 필터링
-        valid_rows = []
-        for row in data_rows:
-            pid = row.get('primary_category_id')
-            sid = row.get('secondary_category_id')
-            img_url = row.get('image_url')
+        # valid_rows = []
+        # for row in data_rows:
+        #     pid = row.get('primary_category_id')
+        #     sid = row.get('secondary_category_id')
+        #     img_url = row.get('image_url')
 
-            # null check 및 유효한 카테고리 조합 확인
-            # if (pid is None or sid is None or img_url is None or
-            #     pid not in PRIMARY_TO_SECONDARY or
-            #     sid not in PRIMARY_TO_SECONDARY[pid]):
-            #     continue
+        #     # null check 및 유효한 카테고리 조합 확인
+        #     # if (pid is None or sid is None or img_url is None or
+        #     #     pid not in PRIMARY_TO_SECONDARY or
+        #     #     sid not in PRIMARY_TO_SECONDARY[pid]):
+        #     #     continue
                 
-            valid_rows.append(row)
+        #     valid_rows.append(row)
 
-        self.data = valid_rows
+        self.data = data_rows
 
         # Primary 카테고리 ID를 0~N-1로 매핑
         # primary_ids = sorted(list(set(d['primary_category_id'] for d in self.data)))
