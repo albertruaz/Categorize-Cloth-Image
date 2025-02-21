@@ -18,25 +18,15 @@ import time
 
 load_dotenv("info/.env")
 
-# 카테고리 매핑 정의
-# PRIMARY_TO_SECONDARY = {
-#     1: [1, 2, 3, 4, 5, 24],        # 아우터
-#     2: [6, 7, 8, 9, 25, 26],       # 상의
-#     3: [10, 11, 12, 13, 14, 27],   # 바지
-#     4: [15, 28, 29],               # 원피스
-#     5: [17, 18, 19],               # 패션소품
-#     6: [20, 21, 22, 23],           # 가방
-#     7: [30, 16, 31],               # 스커트
-#     8: [32],                       # 셋업
-#     9: [33]                        # 신발
-# }
-
 def load_image(image_url, max_retries=3, timeout=10):
     """이미지를 로드하고 PIL Image 객체로 반환한다. 실패 시 지정된 횟수만큼 재시도한다."""
+    headers = {
+        "User-Agent": "Vingle-AI-Train-Category"
+    }
     for attempt in range(1, max_retries + 1):
         try:
             # 타임아웃 설정 (초 단위)
-            response = requests.get(image_url, timeout=timeout)
+            response = requests.get(image_url, headers=headers, timeout=timeout)
 
             # HTTP 에러가 발생했을 경우 예외 발생
             response.raise_for_status()

@@ -68,12 +68,15 @@ class ClothingClassifierCNN(nn.Module):
     def __init__(self, num_secondary_classes=33, freeze_backbone=False):
         super().__init__()
         # ECAResNet50d Backbone
-        self.backbone = timm.create_model(
-            'ecaresnet50d',
-            pretrained=True,
-            num_classes=0,     # 최종 FC 제거
-            global_pool='avg'
-        )
+        # self.backbone = timm.create_model(
+        #     'ecaresnet50d',
+        #     pretrained=True,
+        #     num_classes=0,     # 최종 FC 제거
+        #     global_pool='avg'
+        # )
+        # self.backbone = timm.create_model('efficientnet_lite0', pretrained=True, num_classes=0, global_pool='avg')
+        self.backbone = timm.create_model('regnetx_002', pretrained=True, num_classes=0, global_pool='avg')
+
         in_features = self.backbone.num_features
 
         # 필요하다면 백본 일부를 Freeze
@@ -82,12 +85,24 @@ class ClothingClassifierCNN(nn.Module):
                 param.requires_grad = False
 
         # Custom Head
+        # self.classifier = nn.Sequential(
+        #     nn.Linear(in_features, 256),
+        #     nn.ReLU(),
+        #     nn.Dropout(0.3),
+        #     nn.Linear(256, num_secondary_classes)
+        # )
         self.classifier = nn.Sequential(
-            nn.Linear(in_features, 256),
+            nn.Linear(in_features, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(512, 256),
+            nn.BatchNorm1d(256),
             nn.ReLU(),
             nn.Dropout(0.3),
             nn.Linear(256, num_secondary_classes)
         )
+
 
     def forward(self, x):
         features = self.backbone(x)  # (B, in_features)

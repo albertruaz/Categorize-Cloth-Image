@@ -10,9 +10,11 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
     total_samples = 0
     correct_s = 0  # secondary 예측 정확도
 
-    for batch in tqdm(dataloader, desc=f"Train (Epoch {epoch_idx})", leave=False):
+    # for batch in tqdm(dataloader, desc=f"Train (Epoch {epoch_idx})", leave=False):
+    for batch in dataloader:
         # 데이터셋에서 (img, primary_label, pid, secondary_label_local) 형태라면:
         imgs, _, secondary_labels_in_local = batch
+        secondary_labels_in_local = secondary_labels_in_local - 1  
 
         imgs = imgs.to(device)
         secondary_labels_in_local = secondary_labels_in_local.to(device)
@@ -51,8 +53,10 @@ def evaluate(model, dataloader, device, epoch_idx=0):
     correct_s = 0
 
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc=f"Eval (Epoch {epoch_idx})", leave=False):
+        # for batch in tqdm(dataloader, desc=f"Eval (Epoch {epoch_idx})", leave=False):
+        for batch in dataloader:
             imgs, _, secondary_labels_in_local = batch
+            secondary_labels_in_local = secondary_labels_in_local - 1  
 
             imgs = imgs.to(device)
             secondary_labels_in_local = secondary_labels_in_local.to(device)
