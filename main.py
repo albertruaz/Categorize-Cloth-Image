@@ -4,31 +4,34 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from torchvision import transforms
+
+from utils.load_config import load_config
 import pprint
+
+import wandb
+from utils.logger import log_confusion_matrix, log_epoch_metrics, log_val_check
+from sklearn.metrics import confusion_matrix
 
 from data.db_connector import DBConnector, split_train_val
 from data.dataset import ProductImageDataset
 
 from utils.trainer import train_one_epoch, evaluate
 from models.cnn import ClothingClassifierCNN
-# from config.config import PRIMARY_TO_SECONDARY
 
-import json
-
-def load_config(config_path="config/config.json"):
-    with open(config_path, "r") as file:
-        config = json.load(file)
-
-    # PRIMARY_TO_SECONDARY의 key를 int로 변환
-    config["PRIMARY_TO_SECONDARY"] = {int(k): v for k, v in config["PRIMARY_TO_SECONDARY"].items()}
-    config["unfreeze_schedule"] = {int(k): v for k, v in config["unfreeze_schedule"].items()}
-    
-    return config
 
 def main():
     config = load_config()
     print("Config Setting:")
     pprint.pprint(config, width=80, compact=True)
+    
+    # wandb 초기화
+    wandb.init(
+        project="clothing-classifier",
+        entity="vingle",
+        config=config,
+        name=f"batch{config['batch_size']}_lr{config['lr']}"
+    )
+    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("\nUsing device:", device,"\n")
     
@@ -82,7 +85,6 @@ def main():
 
     # Train
     for epoch in range(epochs):
-        # epoch==5에서 backbone 언프리징 + LR 감소
         if epoch in unfreeze_schedule:
             unfreeze_ratio = unfreeze_schedule[epoch]
             print(f"==> Unfreezing {unfreeze_ratio*100:.0f}% of the backbone and lowering LR to 1e-4")
@@ -96,13 +98,28 @@ def main():
             
             optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
                                     lr=1e-4, weight_decay=1e-4)
-
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
-        train_loss, train_s_acc = train_one_epoch(model, train_loader, optimizer, device, epoch_idx=epoch)
-        val_loss, val_s_acc = evaluate(model, val_loader, device, epoch_idx=epoch)
+        # 학습 및 평가
+        train_loss, train_s_acc, train_preds, train_labels = train_one_epoch(
+            model, train_loader, optimizer, device, epoch_idx=epoch
+        )
+        val_loss, val_s_acc, val_preds, val_labels = evaluate(
+            model, val_loader, device, epoch_idx=epoch
+        )
 
         scheduler.step()
+
+        # wandb 로깅
+        log_epoch_metrics(epoch, train_loss, train_s_acc, val_loss, val_s_acc)
+        
+        # 5 에폭마다 혼동 행렬 로깅
+        if (epoch + 1) % 5 == 0:
+            log_confusion_matrix(
+                val_preds, 
+                val_labels, 
+                class_names=[str(i) for i in range(33)]
+            )
 
         print(f"[Epoch {epoch+1}/{epochs}]")
         print(f"  Train loss: {train_loss:.4f} | S-acc: {train_s_acc:.3f}")
@@ -114,29 +131,16 @@ def main():
             torch.save(model.state_dict(), "best_single_stage.pth")
             print("  [Best model saved]")
 
-    # 추후 inference 시에도 model(img.unsqueeze(0)) → (1, num_secondary_classes)
-    # 로짓 argmax 해서 2차 클래스 직접 예측
-    print("Training completed!")
-
-
-    model.eval()
-    test_samples = min(5, len(val_dataset))
-
-    # 기존 코드
-    # idx_to_primary = {v: k for k, v in train_dataset.primary_to_idx.items()}
-
-    for i in range(test_samples):
-        # val_dataset에서 product_id도 함께 반환하도록 수정된 상태
-        img, product_id, secondary_label_local = val_dataset[i]
-        with torch.no_grad():
-            logits = model(img.unsqueeze(0).to(device))
-            pred_s_idx = torch.argmax(logits, dim=1).item()
-            pred_s_idx += 1 # 보정 0~32 출력
-
-        print(f"[Sample {i}]")
-        print(f"   Product ID: {product_id}")  # product_id 출력 추가
-        print(f"   secondary(local)={secondary_label_local}")
-        print(f"   Pred secondary(local)={pred_s_idx}")
+    # 학습 완료 후 최종 혼동 행렬 로깅
+    log_confusion_matrix(
+        val_preds, 
+        val_labels, 
+        class_names=[str(i) for i in range(33)]
+    )
+    
+    wandb.finish()
+    
+    log_val_check(model, val_dataset, config, device)
 
 if __name__ == '__main__':
     main()

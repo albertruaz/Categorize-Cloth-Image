@@ -83,6 +83,6 @@ class ProductImageDataset(Dataset):
         pid = row['primary_category_id']
         sid = row['secondary_category_id']
 
-        return img, product_id, sid
+        return product_id, img, sid
 
 

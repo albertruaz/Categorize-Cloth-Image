@@ -8,22 +8,26 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
 
     total_loss = 0.0
     total_samples = 0
-    correct_s = 0  # secondary 예측 정확도
+    correct_s = 0
+    
+    # 혼동 행렬 등 추가 지표용
+    all_preds = []
+    all_labels = []
 
     # for batch in tqdm(dataloader, desc=f"Train (Epoch {epoch_idx})", leave=False):
     for batch in dataloader:
-        # 데이터셋에서 (img, primary_label, pid, secondary_label_local) 형태라면:
-        imgs, _, secondary_labels_in_local = batch
-        secondary_labels_in_local = secondary_labels_in_local - 1  
+        # product_id, img, sid
+        _, imgs, sid = batch
+        sid = sid - 1 # 0~32로 변환
 
         imgs = imgs.to(device)
-        secondary_labels_in_local = secondary_labels_in_local.to(device)
+        sid = sid.to(device)
 
         # SingleStageCNN은 단일 logits만 반환
         logits = model(imgs)  # shape: (B, num_secondary_classes)
 
         # CrossEntropyLoss (2차 라벨에 대해서만 계산)
-        loss = ce_loss_fn(logits, secondary_labels_in_local)
+        loss = ce_loss_fn(logits, sid)
 
         # Backprop
         optimizer.zero_grad()
@@ -36,12 +40,16 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
         total_samples += batch_size
 
         preds = logits.argmax(dim=1)
-        correct_s += (preds == secondary_labels_in_local).sum().item()
+        correct_s += (preds == sid).sum().item()
+
+        # 혼동 행렬용 데이터 수집
+        all_preds.extend(preds.cpu().numpy().tolist())
+        all_labels.extend(sid.cpu().numpy().tolist())
 
     avg_loss = total_loss / total_samples
     secondary_acc = correct_s / total_samples
 
-    return avg_loss, secondary_acc
+    return avg_loss, secondary_acc, all_preds, all_labels
 
 
 def evaluate(model, dataloader, device, epoch_idx=0):
@@ -52,26 +60,33 @@ def evaluate(model, dataloader, device, epoch_idx=0):
     total_samples = 0
     correct_s = 0
 
+    all_preds = []
+    all_labels = []
+
     with torch.no_grad():
         # for batch in tqdm(dataloader, desc=f"Eval (Epoch {epoch_idx})", leave=False):
         for batch in dataloader:
-            imgs, _, secondary_labels_in_local = batch
-            secondary_labels_in_local = secondary_labels_in_local - 1  
+            _, imgs, sid = batch
+            sid = sid - 1  
 
             imgs = imgs.to(device)
-            secondary_labels_in_local = secondary_labels_in_local.to(device)
+            sid = sid.to(device)
 
             logits = model(imgs)
-            loss = ce_loss_fn(logits, secondary_labels_in_local)
+            loss = ce_loss_fn(logits, sid)
 
             batch_size = imgs.size(0)
             total_loss += loss.item() * batch_size
             total_samples += batch_size
 
             preds = logits.argmax(dim=1)
-            correct_s += (preds == secondary_labels_in_local).sum().item()
+            correct_s += (preds == sid).sum().item()
+
+            # 혼동 행렬용 데이터 수집
+            all_preds.extend(preds.cpu().numpy().tolist())
+            all_labels.extend(sid.cpu().numpy().tolist())
 
     avg_loss = total_loss / total_samples
     secondary_acc = correct_s / total_samples
 
-    return avg_loss, secondary_acc
+    return avg_loss, secondary_acc, all_preds, all_labels
