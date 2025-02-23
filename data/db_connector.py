@@ -15,105 +15,38 @@ import json
 from dotenv import load_dotenv
 import time
 
+import random
 
-load_dotenv("info/.env")
+from collections import defaultdict
 
-def load_image(image_url, max_retries=3, timeout=10):
-    """이미지를 로드하고 PIL Image 객체로 반환한다. 실패 시 지정된 횟수만큼 재시도한다."""
-    headers = {
-        "User-Agent": "Vingle-AI-Train-Category"
-    }
-    for attempt in range(1, max_retries + 1):
-        try:
-            # 타임아웃 설정 (초 단위)
-            response = requests.get(image_url, headers=headers, timeout=timeout)
+def split_train_val(datas: list, train_ratio: float = 0.8):
+    """
+    datas를 secondary_category_id별로 묶어,
+    각 카테고리에서 train_ratio 비율로 train과 val로 나눈다.
+    """
+    
+    # 카테고리별로 묶기
+    grouped = defaultdict(list)
+    for d in datas:
+        grouped[d['secondary_category_id']].append(d)
 
-            # HTTP 에러가 발생했을 경우 예외 발생
-            response.raise_for_status()
+    train_rows = []
+    val_rows = []
 
-            # 이미지를 메모리에 로드
-            img = Image.open(BytesIO(response.content)).convert("RGB")
-            return img
+    for category_id, items in grouped.items():
+        random.shuffle(items)
+        cat_count = len(items)
+        # train_ratio(4:1 => 0.8)만큼 train에 할당
+        train_count = int(cat_count * train_ratio)
 
-        except Exception as e:
-            print(f"[{attempt}/{max_retries}] Error loading image from {image_url}: {e}")
-            
-            # 재시도 횟수를 모두 소진했다면, 빈(검정) 이미지로 대체
-            if attempt == max_retries:
-                return Image.new('RGB', (224, 224), 'black')
-            
-            # 잠시 대기 후 재시도
-            time.sleep(1)
+        # 순서를 유지한 채로 앞부분은 train, 뒷부분은 val
+        train_items = items[:train_count]
+        val_items = items[train_count:]
 
-class ProductImageDataset(Dataset):
-    def __init__(self, data_rows: List[Dict], transform: Optional[transforms.Compose] = None):
-        """
-        제품 이미지 데이터셋 초기화
-        
-        Args:
-            data_rows: DB에서 가져온 제품 데이터 리스트
-            transform: 이미지 변환을 위한 torchvision transforms
-        """
-        super().__init__()
-        self.transform = transform
+        train_rows.extend(train_items)
+        val_rows.extend(val_items)
 
-        # 유효한 데이터만 필터링
-        # valid_rows = []
-        # for row in data_rows:
-        #     pid = row.get('primary_category_id')
-        #     sid = row.get('secondary_category_id')
-        #     img_url = row.get('image_url')
-
-        #     # null check 및 유효한 카테고리 조합 확인
-        #     # if (pid is None or sid is None or img_url is None or
-        #     #     pid not in PRIMARY_TO_SECONDARY or
-        #     #     sid not in PRIMARY_TO_SECONDARY[pid]):
-        #     #     continue
-                
-        #     valid_rows.append(row)
-
-        self.data = data_rows
-
-        # Primary 카테고리 ID를 0~N-1로 매핑
-        # primary_ids = sorted(list(set(d['primary_category_id'] for d in self.data)))
-        # self.primary_to_idx = {pid: i for i, pid in enumerate(primary_ids)}
-        # self.num_primary_classes = len(primary_ids)
-
-        # Secondary 카테고리 매핑 생성
-        # self.secondary_mapping = {}
-        # for pid in primary_ids:
-        #     valid_subcats = PRIMARY_TO_SECONDARY[pid]
-        #     self.secondary_mapping[pid] = {
-        #         'subcats': valid_subcats,
-        #         'subcat_to_idx': {sc: idx for idx, sc in enumerate(valid_subcats)}
-        #     }
-
-    def __len__(self) -> int:
-        return len(self.data)
-
-    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, int, int, int]:
-        row = self.data[idx]
-        image_url = row['image_url']
-        product_id = row['id']
-        
-        img = load_image(image_url)
-
-        # 이미지 변환 적용
-        if self.transform:
-            img = self.transform(img)
-        else:
-            img = transforms.ToTensor()(img)
-
-        # 레이블 생성
-        pid = row['primary_category_id']
-        sid = row['secondary_category_id']
-
-        # primary_label = self.primary_to_idx[pid]
-        # sub_info = self.secondary_mapping[pid]
-        # secondary_label_local = sub_info['subcat_to_idx'][sid]
-        
-        return img, product_id, sid
-        # return img, primary_label, pid, secondary_label_local, product_id
+    return train_rows, val_rows
 
 class SingletonMeta(type):
     _instance = None
@@ -194,10 +127,16 @@ class DBConnector(metaclass=SingletonMeta):
             return None
         return f"{protocol}://{cloudfront_domain}/{file_name}"
 
-    def get_product_data(self, where_condition: str = "1=1", limit: int = 500, offset: int = 0) -> list:
-        """ 샘플로 특정 조건과 limit, offset을 기반으로 제품 정보를 가져온다. """
+    def get_product_data(self, where_condition: str = "1=1", x: int = 10, offset: int = 0) -> list:
+        """
+        secondary_category_id가 같을 때, 해당 카테고리에 속하는
+        데이터 개수가 x개 이상이면 x개만, x개 이하이면 전부 가져온다.
+        """
         session = self.Session()
         try:
+            # Window Function을 사용하여 secondary_category_id별로 데이터 개수(cat_count)를 구하고,
+            # 같은 카테고리에 속하는 row들에 대한 순번(rownum)을 매긴다.
+            # 그리고 rownum <= LEAST(cat_count, :x)를 만족하는 데이터만 조회한다.
             sql = text(f"""
                 SELECT
                     id,
@@ -205,19 +144,35 @@ class DBConnector(metaclass=SingletonMeta):
                     status,
                     primary_category_id,
                     secondary_category_id
-                FROM product
-                WHERE {where_condition}
-                LIMIT {limit} OFFSET {offset}
+                FROM (
+                    SELECT
+                        id,
+                        main_image,
+                        status,
+                        primary_category_id,
+                        secondary_category_id,
+                        -- secondary_category_id별 총 개수
+                        COUNT(*) OVER (PARTITION BY secondary_category_id) AS cat_count,
+                        -- secondary_category_id별 순번
+                        ROW_NUMBER() OVER (PARTITION BY secondary_category_id ORDER BY id DESC) AS rownum
+                    FROM product
+                    WHERE {where_condition}
+                ) AS t
+                -- 각 secondary_category_id 그룹에서 cat_count와 x 중 더 작은 값까지만 가져온다.
+                WHERE t.rownum <= LEAST(t.cat_count, :x)
+                ORDER BY t.secondary_category_id, t.id DESC
             """)
-            result = session.execute(sql)
+
+            # 파라미터 바인딩
+            result = session.execute(sql, {'x': x})
 
             products = []
             for row in result.fetchall():
-                product_id = row[0]
-                main_image = self.get_s3_url(row[1]) if row[1] else None
-                status = row[2]
-                primary_id = row[3]
-                secondary_id = row[4]
+                product_id = row["id"]
+                main_image = self.get_s3_url(row["main_image"]) if row["main_image"] else None
+                status = row["status"]
+                primary_id = row["primary_category_id"]
+                secondary_id = row["secondary_category_id"]
 
                 products.append({
                     'id': product_id,
@@ -226,6 +181,7 @@ class DBConnector(metaclass=SingletonMeta):
                     'primary_category_id': primary_id,
                     'secondary_category_id': secondary_id
                 })
+
             return products
         finally:
             session.close()

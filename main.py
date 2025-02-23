@@ -6,9 +6,11 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 import pprint
 
-from data.db_connector import ProductImageDataset, DBConnector
+from data.db_connector import DBConnector, split_train_val
+from data.dataset import ProductImageDataset
+
 from utils.trainer import train_one_epoch, evaluate
-from models.hierarchical_cnn import HierarchicalCNN, SingleStageCNN, ClothingClassifierCNN
+from models.cnn import ClothingClassifierCNN
 # from config.config import PRIMARY_TO_SECONDARY
 
 import json
@@ -28,16 +30,18 @@ def main():
     print("Config Setting:")
     pprint.pprint(config, width=80, compact=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("Using device:", device)
+    print("\nUsing device:", device,"\n")
     
-
+    # DB에서 데이터 추출
     db = DBConnector()
-    # train_rows = db.get_product_data(where_condition="1=1", limit=6000, offset=0)
-    # val_rows   = db.get_product_data(where_condition="1=1", limit=1500, offset=6000)
-    train_rows = db.get_product_data(where_condition="1=1", limit=config["train_num"], offset=0)
-    val_rows   = db.get_product_data(where_condition="1=1", limit=config["val_num"], offset=config["train_num"])
+    datas = db.get_product_data(where_condition="1=1", x=config["data_num"])
+    train_rows, val_rows = split_train_val(datas)
+    
+    print("Number of Train data",len(train_rows))
+    print("Number of Val data",len(val_rows),"\n")
 
-    train_transform = transforms.Compose([
+    # 추출 데이터 DataSet화
+    transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
         transforms.Normalize(
@@ -45,39 +49,20 @@ def main():
             std =[0.229, 0.224, 0.225]
         )
     ])
+    train_dataset = ProductImageDataset(train_rows, transform=transform)
+    val_dataset   = ProductImageDataset(val_rows,   transform=transform)
 
-    val_transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(
-            mean=[0.485, 0.456, 0.406],
-            std =[0.229, 0.224, 0.225]
-        )
-    ])
-
-    train_dataset = ProductImageDataset(train_rows, transform=train_transform)
-    val_dataset   = ProductImageDataset(val_rows,   transform=val_transform)
-
-    # DataLoader
     batch_size = config["batch_size"]
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=3, pin_memory=True)
-    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=3, pin_memory=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=3, pin_memory=True)
 
-    # 모델 생성
-    # model = HierarchicalCNN(PRIMARY_TO_SECONDARY, len(PRIMARY_TO_SECONDARY)).to(device)
-    # secondary_all = []
-    # for sub_list in config["PRIMARY_TO_SECONDARY"].values():
-    #     secondary_all.extend(sub_list)
-    # secondary_all = sorted(set(secondary_all))
-    # num_secondary_classes = len(secondary_all)
-
+    # 모델 세팅
     model = ClothingClassifierCNN().to(device)
 
-    # 처음에는 backbone 파라미터 동결
     for param in model.backbone.parameters():
         param.requires_grad = False
 
-
+    # Hyper parameter
     optimizer = optim.AdamW(
         model.classifier.parameters(), 
         lr=config["lr"],
@@ -90,12 +75,12 @@ def main():
         gamma=config["gamma"]
     )
 
-
-    # 학습 설정
     epochs = config["epochs"]
     unfreeze_schedule = config["unfreeze_schedule"]
     best_val_loss = float('inf')
 
+
+    # Train
     for epoch in range(epochs):
         # epoch==5에서 backbone 언프리징 + LR 감소
         if epoch in unfreeze_schedule:
@@ -109,11 +94,9 @@ def main():
                 if i < num_layers_to_unfreeze:
                     param.requires_grad = True
             
-            # Optimizer 재설정 (필요 시)
             optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
                                     lr=1e-4, weight_decay=1e-4)
 
-            # Scheduler도 필요하면 변경
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
         train_loss, train_s_acc = train_one_epoch(model, train_loader, optimizer, device, epoch_idx=epoch)
