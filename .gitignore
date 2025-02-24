@@ -12,4 +12,12 @@ __pycache__/
 
 .env
 
+*.wandb
+**/*.wandb
+*.yaml
+*.err
+/wandb
+
+latest-run
+
 /info

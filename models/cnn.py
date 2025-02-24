@@ -22,23 +22,15 @@ class ClothingClassifierCNN(nn.Module):
                 param.requires_grad = False
 
         # Custom Head
-        # self.classifier = nn.Sequential(
-        #     nn.Linear(in_features, 256),
-        #     nn.ReLU(),
-        #     nn.Dropout(0.3),
-        #     nn.Linear(256, num_secondary_classes)
-        # )
         self.classifier = nn.Sequential(
-            nn.Linear(in_features, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(in_features, 64),
+            nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, num_secondary_classes)
+            nn.Linear(64, num_secondary_classes)
         )
+        
+        print(self.classifier)
 
 
     def forward(self, x):

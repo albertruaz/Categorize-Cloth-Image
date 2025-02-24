@@ -8,7 +8,7 @@ def map_secondary_to_primary(labels, primary_to_secondary):
     secondary_to_primary = {}
     for primary, secondaries in primary_to_secondary.items():
         for sec in secondaries:
-            secondary_to_primary[sec] = primary
+            secondary_to_primary[sec-1] = primary
     return [secondary_to_primary[label] for label in labels]
 
 def log_confusion_matrix(preds, labels, class_names=None):

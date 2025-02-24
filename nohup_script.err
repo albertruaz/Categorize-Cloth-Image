@@ -2,8 +2,8 @@ nohup: ignoring input
 wandb: Using wandb-core as the SDK backend.  Please refer to https://wandb.me/wandb-core for more information.
 wandb: Currently logged in as: albertruaz (albertruaz-korea-advanced-institute-of-science-and-techn) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
 wandb: Tracking run with wandb version 0.19.7
-wandb: Run data is saved locally in /home/swkang/codes/others/wandb/run-20250223_174839-vrxg96o1
+wandb: Run data is saved locally in /home/swkang/codes/others/wandb/run-20250224_201612-6y70jltj
 wandb: Run `wandb offline` to turn off syncing.
 wandb: Syncing run batch128_lr0.001
 wandb: ⭐️ View project at https://wandb.ai/vingle/clothing-classifier
-wandb: 🚀 View run at https://wandb.ai/vingle/clothing-classifier/runs/vrxg96o1
+wandb: 🚀 View run at https://wandb.ai/vingle/clothing-classifier/runs/6y70jltj

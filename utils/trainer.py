@@ -2,9 +2,16 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
+def train_one_epoch(model, dataloader, optimizer, device, num_for_class, epoch_idx=0):
     model.train()
-    ce_loss_fn = nn.CrossEntropyLoss()
+
+    weights = [1.0 / c for c in num_for_class]
+    weights = torch.FloatTensor(weights).to(device)
+
+    ce_loss_fn = nn.CrossEntropyLoss(weight=weights)
+    ce_loss_fn_no = nn.CrossEntropyLoss()
+
+    # ce_loss_fn = nn.CrossEntropyLoss()
 
     total_loss = 0.0
     total_samples = 0
@@ -28,7 +35,8 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
 
         # CrossEntropyLoss (2차 라벨에 대해서만 계산)
         loss = ce_loss_fn(logits, sid)
-
+        loss_no = ce_loss_fn_no(logits, sid)
+        
         # Backprop
         optimizer.zero_grad()
         loss.backward()
@@ -36,7 +44,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
 
         # 통계 계산
         batch_size = imgs.size(0)
-        total_loss += loss.item() * batch_size
+        total_loss += loss_no.item() * batch_size
         total_samples += batch_size
 
         preds = logits.argmax(dim=1)
@@ -52,7 +60,7 @@ def train_one_epoch(model, dataloader, optimizer, device, epoch_idx=0):
     return avg_loss, secondary_acc, all_preds, all_labels
 
 
-def evaluate(model, dataloader, device, epoch_idx=0):
+def evaluate(model, dataloader, device, num_for_class, epoch_idx=0):
     model.eval()
     ce_loss_fn = nn.CrossEntropyLoss()
 

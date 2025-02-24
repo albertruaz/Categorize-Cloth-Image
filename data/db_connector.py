@@ -32,10 +32,12 @@ def split_train_val(datas: list, train_ratio: float = 0.8):
 
     train_rows = []
     val_rows = []
+    num_for_class = [None for _ in range(33)]
 
     for category_id, items in grouped.items():
         random.shuffle(items)
         cat_count = len(items)
+        num_for_class[category_id-1] = cat_count
         # train_ratio(4:1 => 0.8)만큼 train에 할당
         train_count = int(cat_count * train_ratio)
 
@@ -46,7 +48,7 @@ def split_train_val(datas: list, train_ratio: float = 0.8):
         train_rows.extend(train_items)
         val_rows.extend(val_items)
 
-    return train_rows, val_rows
+    return train_rows, val_rows, num_for_class
 
 class SingletonMeta(type):
     _instance = None

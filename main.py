@@ -32,13 +32,18 @@ def main():
         name=f"batch{config['batch_size']}_lr{config['lr']}"
     )
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("Available GPUs:", torch.cuda.device_count())
+    print("Selected device:", torch.cuda.current_device())
+    print("Device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
+    print("Is CUDA available?", torch.cuda.is_available())
+
+    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
     print("\nUsing device:", device,"\n")
     
     # DB에서 데이터 추출
     db = DBConnector()
     datas = db.get_product_data(where_condition="1=1", x=config["data_num"])
-    train_rows, val_rows = split_train_val(datas)
+    train_rows, val_rows, num_for_class = split_train_val(datas)
     
     print("Number of Train data",len(train_rows))
     print("Number of Val data",len(val_rows),"\n")
@@ -72,18 +77,27 @@ def main():
         weight_decay=config["weight_decay"]
     )
     
-    scheduler = optim.lr_scheduler.MultiStepLR(
+    # scheduler = optim.lr_scheduler.MultiStepLR(
+    #     optimizer,
+    #     milestones=config["milestones"],
+    #     gamma=config["gamma"]
+    # )
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
         optimizer,
-        milestones=config["milestones"],
-        gamma=config["gamma"]
+        max_lr=config["max_lr"],
+        steps_per_epoch=len(train_loader),
+        epochs=config["epochs"],
+        pct_start=0.3,        # 학습률을 상승시킬 비중 (전체 epoch의 30%)
+        anneal_strategy='cos' # 'linear' or 'cos'
     )
+
+
 
     epochs = config["epochs"]
     unfreeze_schedule = config["unfreeze_schedule"]
     best_val_loss = float('inf')
 
-
-    # Train
+    print("Training Start")
     for epoch in range(epochs):
         if epoch in unfreeze_schedule:
             unfreeze_ratio = unfreeze_schedule[epoch]
@@ -102,10 +116,10 @@ def main():
 
         # 학습 및 평가
         train_loss, train_s_acc, train_preds, train_labels = train_one_epoch(
-            model, train_loader, optimizer, device, epoch_idx=epoch
+            model, train_loader, optimizer, device, num_for_class, epoch_idx=epoch
         )
         val_loss, val_s_acc, val_preds, val_labels = evaluate(
-            model, val_loader, device, epoch_idx=epoch
+            model, val_loader, device, num_for_class, epoch_idx=epoch
         )
 
         scheduler.step()
@@ -126,10 +140,10 @@ def main():
         print(f"  Val   loss: {val_loss:.4f}   | S-acc: {val_s_acc:.3f}")
 
         # best model 갱신
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            torch.save(model.state_dict(), "best_single_stage.pth")
-            print("  [Best model saved]")
+        # if val_loss < best_val_loss:
+        #     best_val_loss = val_loss
+        #     torch.save(model.state_dict(), "best_single_stage.pth")
+        #     print("  [Best model saved]")
 
     # 학습 완료 후 최종 혼동 행렬 로깅
     log_confusion_matrix(
