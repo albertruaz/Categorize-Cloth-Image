@@ -9,7 +9,7 @@ from utils.load_config import load_config
 import pprint
 
 import wandb
-from utils.logger import log_confusion_matrix, log_epoch_metrics, log_val_check
+from utils.logger import log_confusion_matrix, log_epoch_metrics, log_val_check, save_image
 from sklearn.metrics import confusion_matrix
 
 from data.db_connector import DBConnector, split_train_val
@@ -29,24 +29,23 @@ def main():
         project="clothing-classifier",
         entity="vingle",
         config=config,
-        name=f"batch{config['batch_size']}_lr{config['lr']}"
+        name=config['name']
     )
-    
-    print("Available GPUs:", torch.cuda.device_count())
-    print("Selected device:", torch.cuda.current_device())
-    print("Device name:", torch.cuda.get_device_name(torch.cuda.current_device()))
-    print("Is CUDA available?", torch.cuda.is_available())
 
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     print("\nUsing device:", device,"\n")
     
     # DB에서 데이터 추출
     db = DBConnector()
     datas = db.get_product_data(where_condition="1=1", x=config["data_num"])
-    train_rows, val_rows, num_for_class = split_train_val(datas)
+    train_rows, val_rows, num_for_class, train_num_for_class, val_num_for_class = split_train_val(datas)
     
     print("Number of Train data",len(train_rows))
-    print("Number of Val data",len(val_rows),"\n")
+    print("Number of Val data",len(val_rows))
+    print("Number of classes",num_for_class)
+    print("Number of Train data for each class",train_num_for_class)
+    print("Number of Val data for each class",val_num_for_class,"\n")
 
     # 추출 데이터 DataSet화
     transform = transforms.Compose([
@@ -57,62 +56,57 @@ def main():
             std =[0.229, 0.224, 0.225]
         )
     ])
+
     train_dataset = ProductImageDataset(train_rows, transform=transform)
     val_dataset   = ProductImageDataset(val_rows,   transform=transform)
 
+    
     batch_size = config["batch_size"]
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=3, pin_memory=True)
-    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=3, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+    val_loader   = DataLoader(val_dataset, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
 
     # 모델 세팅
-    model = ClothingClassifierCNN().to(device)
-
-    for param in model.backbone.parameters():
+    model = ClothingClassifierCNN(config["hidden_layer"]).to(device)
+    
+    backbone_params = list(model.backbone.named_parameters())
+    classifier_params = list(model.classifier.parameters())
+    
+    for name, param in backbone_params:
         param.requires_grad = False
 
-    # Hyper parameter
+    # Initially only train classifier params
     optimizer = optim.AdamW(
-        model.classifier.parameters(), 
+        classifier_params,
         lr=config["lr"],
         weight_decay=config["weight_decay"]
     )
-    
-    # scheduler = optim.lr_scheduler.MultiStepLR(
-    #     optimizer,
-    #     milestones=config["milestones"],
-    #     gamma=config["gamma"]
-    # )
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-        optimizer,
-        max_lr=config["max_lr"],
-        steps_per_epoch=len(train_loader),
-        epochs=config["epochs"],
-        pct_start=0.3,        # 학습률을 상승시킬 비중 (전체 epoch의 30%)
-        anneal_strategy='cos' # 'linear' or 'cos'
-    )
-
-
 
     epochs = config["epochs"]
-    unfreeze_schedule = config["unfreeze_schedule"]
     best_val_loss = float('inf')
+    total_backbone_layers = len(backbone_params)
 
     print("Training Start")
     for epoch in range(epochs):
-        if epoch in unfreeze_schedule:
-            unfreeze_ratio = unfreeze_schedule[epoch]
-            print(f"==> Unfreezing {unfreeze_ratio*100:.0f}% of the backbone and lowering LR to 1e-4")
-            
-            total_layers = len(list(model.backbone.parameters()))
-            num_layers_to_unfreeze = int(total_layers * unfreeze_ratio)
+        if epoch in config["unfreeze"]:
+            unfreeze_ratio = config["unfreeze"][epoch]
+            num_layers_to_unfreeze = int(total_backbone_layers * unfreeze_ratio)
+            newly_unfrozen_layers = backbone_params[total_backbone_layers - num_layers_to_unfreeze : total_backbone_layers - frozen_until]
+            if newly_unfrozen_layers:
+                print(f"\n[Epoch {epoch}] Unfreezing ratio {unfreeze_ratio:.1f} =>"
+                    f" {len(newly_unfrozen_layers)} layers 새로 unfreeze")
 
-            for i, param in enumerate(model.backbone.parameters()):
-                if i < num_layers_to_unfreeze:
+                for name, param in newly_unfrozen_layers:
                     param.requires_grad = True
-            
-            optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), 
-                                    lr=1e-4, weight_decay=1e-4)
-            scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+                current_lr = optimizer.param_groups[0]["lr"]
+                new_lr = current_lr * 0.1  # 예: 기존의 10분의 1로
+                print(f"새로 unfrozen된 레이어에는 lr={new_lr:.6f} 적용")
+                optimizer.add_param_group({
+                    "params": [param for _, param in newly_unfrozen_layers],
+                    "lr": new_lr,
+                    "weight_decay": config["weight_decay"]
+                })
+                new_unfrozen_count = total_backbone_layers - (total_backbone_layers - num_layers_to_unfreeze)
+                frozen_until = max(frozen_until, new_unfrozen_count)
 
         # 학습 및 평가
         train_loss, train_s_acc, train_preds, train_labels = train_one_epoch(
@@ -121,8 +115,6 @@ def main():
         val_loss, val_s_acc, val_preds, val_labels = evaluate(
             model, val_loader, device, num_for_class, epoch_idx=epoch
         )
-
-        scheduler.step()
 
         # wandb 로깅
         log_epoch_metrics(epoch, train_loss, train_s_acc, val_loss, val_s_acc)
@@ -140,10 +132,10 @@ def main():
         print(f"  Val   loss: {val_loss:.4f}   | S-acc: {val_s_acc:.3f}")
 
         # best model 갱신
-        # if val_loss < best_val_loss:
-        #     best_val_loss = val_loss
-        #     torch.save(model.state_dict(), "best_single_stage.pth")
-        #     print("  [Best model saved]")
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            torch.save(model.state_dict(), "best_single_stage.pth")
+            print("  [Best model saved]")
 
     # 학습 완료 후 최종 혼동 행렬 로깅
     log_confusion_matrix(

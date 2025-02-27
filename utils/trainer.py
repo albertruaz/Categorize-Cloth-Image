@@ -68,13 +68,14 @@ def evaluate(model, dataloader, device, num_for_class, epoch_idx=0):
     total_samples = 0
     correct_s = 0
 
+    all_ids = []
     all_preds = []
     all_labels = []
 
     with torch.no_grad():
         # for batch in tqdm(dataloader, desc=f"Eval (Epoch {epoch_idx})", leave=False):
         for batch in dataloader:
-            _, imgs, sid = batch
+            id, imgs, sid = batch
             sid = sid - 1  
 
             imgs = imgs.to(device)
@@ -91,10 +92,11 @@ def evaluate(model, dataloader, device, num_for_class, epoch_idx=0):
             correct_s += (preds == sid).sum().item()
 
             # 혼동 행렬용 데이터 수집
+            all_ids.extend(id.cpu().numpy().tolist())
             all_preds.extend(preds.cpu().numpy().tolist())
             all_labels.extend(sid.cpu().numpy().tolist())
 
     avg_loss = total_loss / total_samples
     secondary_acc = correct_s / total_samples
 
-    return avg_loss, secondary_acc, all_preds, all_labels
+    return avg_loss, secondary_acc, all_ids, all_preds, all_labels

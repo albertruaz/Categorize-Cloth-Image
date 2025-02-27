@@ -7,6 +7,11 @@ def load_config(config_path="config/config.json"):
 
     # PRIMARY_TO_SECONDARY의 key를 int로 변환
     config["PRIMARY_TO_SECONDARY"] = {int(k): v for k, v in config["PRIMARY_TO_SECONDARY"].items()}
-    config["unfreeze_schedule"] = {int(k): v for k, v in config["unfreeze_schedule"].items()}
+    
+    # SECONDARY_TO_KOREAN의 key도 int로 변환
+    config["SECONDARY_TO_KOREAN"] = {int(k): v for k, v in config["SECONDARY_TO_KOREAN"].items()}
+    
+    # 기존 unfreeze 처리
+    config["unfreeze"] = {int(k): v for k, v in config["unfreeze"].items()}
     
     return config
