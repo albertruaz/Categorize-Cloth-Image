@@ -19,16 +19,16 @@ def main():
     print("Using device:", device)
 
     db = DBConnector()
-    datas = db.get_product_data(where_condition="1=1", x=10)
+    datas = db.get_product_data(where_condition="1=1", x=100)
     _, val_rows, num_for_class, _, _ = split_train_val(datas)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        # transforms.Normalize(
-        #     mean=[0.485, 0.456, 0.406],
-        #     std =[0.229, 0.224, 0.225]
-        # )
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std =[0.229, 0.224, 0.225]
+        )
     ])
 
     val_dataset = ProductImageDataset(val_rows, transform=transform)

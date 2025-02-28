@@ -84,37 +84,47 @@ def main():
     epochs = config["epochs"]
     best_val_loss = float('inf')
     total_backbone_layers = len(backbone_params)
+    frozen_until = total_backbone_layers  # 초기에는 모든 레이어가 frozen 상태
 
     print("Training Start")
     for epoch in range(epochs):
         if epoch in config["unfreeze"]:
             unfreeze_ratio = config["unfreeze"][epoch]
             num_layers_to_unfreeze = int(total_backbone_layers * unfreeze_ratio)
-            newly_unfrozen_layers = backbone_params[total_backbone_layers - num_layers_to_unfreeze : total_backbone_layers - frozen_until]
+            new_frozen_until = total_backbone_layers - num_layers_to_unfreeze
+            
+            # 새로 unfreeze할 레이어들 선택
+            newly_unfrozen_layers = backbone_params[new_frozen_until:frozen_until]
+            
             if newly_unfrozen_layers:
                 print(f"\n[Epoch {epoch}] Unfreezing ratio {unfreeze_ratio:.1f} =>"
                     f" {len(newly_unfrozen_layers)} layers 새로 unfreeze")
 
+                # Unfreeze new layers
                 for name, param in newly_unfrozen_layers:
                     param.requires_grad = True
+
+                # Add new parameter group with lower learning rate
                 current_lr = optimizer.param_groups[0]["lr"]
-                new_lr = current_lr * 0.1  # 예: 기존의 10분의 1로
+                new_lr = current_lr * 0.1
                 print(f"새로 unfrozen된 레이어에는 lr={new_lr:.6f} 적용")
+                
                 optimizer.add_param_group({
                     "params": [param for _, param in newly_unfrozen_layers],
                     "lr": new_lr,
                     "weight_decay": config["weight_decay"]
                 })
-                new_unfrozen_count = total_backbone_layers - (total_backbone_layers - num_layers_to_unfreeze)
-                frozen_until = max(frozen_until, new_unfrozen_count)
+                
+                # Update frozen_until for next iteration
+                frozen_until = new_frozen_until
 
         # 학습 및 평가
         train_loss, train_s_acc, train_preds, train_labels = train_one_epoch(
             model, train_loader, optimizer, device, num_for_class, epoch_idx=epoch
         )
-        val_loss, val_s_acc, val_preds, val_labels = evaluate(
+        val_loss, val_s_acc, _, val_preds, val_labels = evaluate(
             model, val_loader, device, num_for_class, epoch_idx=epoch
-        )
+        ) 
 
         # wandb 로깅
         log_epoch_metrics(epoch, train_loss, train_s_acc, val_loss, val_s_acc)

@@ -6,6 +6,6 @@
 
 conda activate newenv
 
-nohup python main.py > nohup_script.out 2> nohup_script.err &
+nohup python train.py > nohup.out 2> nohup.err &
 
 ps aux | grep "nohup python" | grep -v grep
