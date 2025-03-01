@@ -1,0 +1,11 @@
+requests
+Pillow
+sshtunnel
+python-dotenv
+PyMySQL
+sqlalchemy==1.4.46
+torch
+torchvision
+tqdm
+timm
+tensorboard 
