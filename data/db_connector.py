@@ -37,6 +37,7 @@ def split_train_val(datas: list, train_ratio: float = 0.8):
     val_num_for_class = [None for _ in range(33)]
 
     for category_id, items in grouped.items():
+        random.seed(42)
         random.shuffle(items)
         cat_count = len(items)
         # train_ratio(4:1 => 0.8)만큼 train에 할당

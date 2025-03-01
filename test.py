@@ -19,8 +19,11 @@ def main():
     print("Using device:", device)
 
     db = DBConnector()
-    datas = db.get_product_data(where_condition="1=1", x=100)
+    datas = db.get_product_data(where_condition="1=1", x=1000)
     _, val_rows, num_for_class, _, _ = split_train_val(datas)
+
+    print(len(val_rows))
+    print(num_for_class)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
@@ -67,8 +70,8 @@ def main():
 
     sorted_mismatches = sorted(mismatch_dict.items(), key=lambda x: len(x[1]), reverse=True)
     save_mismatch_cases(sorted_mismatches, config["SECONDARY_TO_KOREAN"])
-    download_list = sorted_mismatches[0][1]
-    download_images_from_list(val_dataset, download_list, config)
+    # download_list = sorted_mismatches[0][1]
+    # download_images_from_list(val_dataset, download_list, config)
 
 
 if __name__ == "__main__":
